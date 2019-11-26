@@ -1,0 +1,4 @@
+venv
+plots
+.idea
+*.pyc
