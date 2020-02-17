@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 import requests
+import os
 from datetime import datetime
 
 try:
@@ -86,15 +87,38 @@ def get_compiled_model():
                 metrics=['accuracy'])
   return model
 
-model = get_compiled_model()
-epochs = 40
-history = model.fit_generator(
-    train_dataset,
-    steps_per_epoch=int(np.ceil(len(df) / (epochs * float(BATCH_SIZE)))) - 2,
-    epochs=epochs,
-    validation_data=val_dataset,
-    validation_steps=int(np.ceil(len(val_df) / (epochs * float(BATCH_SIZE)))) - 2
-)
+
+NUM_WORKERS = 2
+ip1 = input('Enter ip 1: ')
+ip2 = input('Enter ip 2: ')
+IP_ADDRS = [ip1, ip2]
+port1 = int(input('Enter port 1: '))
+port2 = int(input('Enter port 2: '))
+PORTS = [port1, port2]
+
+os.environ['TF_CONFIG'] = json.dumps({
+    'cluster': {
+        'worker': ['%s:%d' % (IP_ADDRS[w], PORTS[w]) for w in range(NUM_WORKERS)],
+        'ps': ['%s:%d' % (IP_ADDRS[w], PORTS[w]) for w in range(NUM_WORKERS)]
+    },
+    'task': {
+        'type': 'worker',
+        'index': 0
+    }
+})
+
+
+strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+with strategy.scope():
+	model = get_compiled_model()
+	epochs = 40
+	history = model.fit_generator(
+	    train_dataset,
+	    steps_per_epoch=int(np.ceil(len(df) / (epochs * float(BATCH_SIZE)))) - 2,
+	    epochs=epochs,
+	    validation_data=val_dataset,
+	    validation_steps=int(np.ceil(len(val_df) / (epochs * float(BATCH_SIZE)))) - 2
+	)
 
 test_loss, test_accuracy = model.evaluate(test_dataset)
 print('Accuracy on test dataset:', test_accuracy)
