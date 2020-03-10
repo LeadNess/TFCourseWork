@@ -2,3 +2,8 @@ venv
 plots
 .idea
 *.pyc
+NN.ipynb.copy
+ML.ipynb
+NN_test_2.ipynb
+nn.py
+datasets/*
