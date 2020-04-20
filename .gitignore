@@ -1,9 +1,5 @@
-venv
-plots
-.idea
+datasets
+kddcup_data
+.ipynb_chechpoints
 *.pyc
-NN.ipynb.copy
-ML.ipynb
-NN_test_2.ipynb
-nn.py
-datasets/*
+
