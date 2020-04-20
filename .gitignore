@@ -1,3 +1,5 @@
+.idea
+venv
 datasets
 kddcup_data
 logs
