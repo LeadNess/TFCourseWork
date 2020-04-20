@@ -1,12 +1,12 @@
 import os
 import requests
 import shutil
+import json
 import gzip
 import shutil
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from datetime import datetime
 from sklearn.preprocessing import LabelBinarizer, MinMaxScaler
 from sklearn.ensemble import RandomForestClassifier
