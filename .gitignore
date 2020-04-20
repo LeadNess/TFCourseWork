@@ -1,5 +1,7 @@
 datasets
 kddcup_data
+logs
 .ipynb_chechpoints
+CourceWork.ipynb
 *.pyc
 
