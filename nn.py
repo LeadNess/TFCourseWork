@@ -116,71 +116,60 @@ print('train_df: ', len(train_df))
 print('test_df:  ', len(test_df)) 
 print('val_df:   ', len(val_df))
 
-# Define a data pipeline for a RandomForestClassifier    
-@tf.function
-def pipeline(data):
-    df = data.copy()
-    cat_encoder = LabelBinarizer()
-    scaler = MinMaxScaler()
-    for attr in cat_attrs:
-        df[attr] = cat_encoder.fit_transform(df[attr].values.reshape(-1, 1))
-    for attr in num_attrs:
-        df[attr] = scaler.fit_transform(df[attr].values.reshape(-1, 1))
-    return df
 
-# Fit RandomForestClassifier to know feature importances
-train_data = pipeline(train_df)
+train_data = train_df.copy()
+cat_encoder = LabelBinarizer()
+scaler = MinMaxScaler()
+for attr in cat_attrs:
+    train_data[attr] = cat_encoder.fit_transform(train_data[attr].values.reshape(-1, 1))
+for attr in num_attrs:
+    train_data[attr] = scaler.fit_transform(train_data[attr].values.reshape(-1, 1))
+
+
 rnd_clf = RandomForestClassifier(n_estimators=500, n_jobs=-1)
-rnd_clf.fit(train_data.drop('label', axis=1), train_data['label'])
+rnd_clf.fit(train_data.drop('label', axis=1), train_data['label'])    
 
-# Define data pipeline for NN model
-@tf.function
-def df_to_dataset(input_df, main_df=data, bias = 0.05, shuffle=True, batch_size=32):
-    """
-    Performs data preprocessing.
-    
-    param data: pandas.Dataframe
-    """
-    df = input_df.copy()
-    cat_encoder = LabelBinarizer()
-    scaler = MinMaxScaler()
-    for attr in cat_attrs:
-        cat_encoder.fit(main_df[attr].values.reshape(-1, 1))
-        df[attr] = cat_encoder.transform(df[attr].values.reshape(-1, 1))
-    for attr in num_attrs:
-        scaler.fit(main_df[attr].values.reshape(-1, 1))
-        df[attr] = scaler.fit_transform(df[attr].values.reshape(-1, 1))
-            
-    d = dict(zip(features, rnd_clf.feature_importances_)) # dict(feature: feature_importance)
-    df = df.drop(list(filter(lambda x: d[x] < bias, d)), axis=1) # drop unimportance features
-
-    df['label'] = df['label'].apply(lambda x: target_classes[attack_types_dict[x]]) # 10 classes > 4 main classes
-    df['label'], _ = df['label'].factorize()
-        
-    labels = df.pop('label')
-    dataset = tf.data.Dataset.from_tensor_slices((df.values, labels))
-    if shuffle:
-        dataset = dataset.shuffle(buffer_size=len(df))
-    dataset = dataset.batch(batch_size)
-    print(f'Features count: {len(df.columns)}')
-    print('Сlass distribution: ', dict(labels.value_counts()))
-    return dataset
-
-# Form training, test and validation datasets
 BATCH_SIZE = 32
 BIAS = 0.02
 
-train_dataset = df_to_dataset(train_df, bias=BIAS, batch_size=BATCH_SIZE)
-val_dataset = df_to_dataset(val_df, bias=BIAS, batch_size=BATCH_SIZE)
-test_dataset = df_to_dataset(test_df,bias=BIAS, batch_size=BATCH_SIZE)
+bias=BIAS
+batch_size=BATCH_SIZE
 
-# Determine logs dir for TensorBoard
-logdir = "logs/scalars/" + datetime.now().strftime("%Y%m%d-%H%M%S")
-tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir)
+cat_encoder = LabelBinarizer()
+scaler = MinMaxScaler()
+for attr in cat_attrs:
+    cat_encoder.fit(data[attr].values.reshape(-1, 1))
+    train_df[attr] = cat_encoder.transform(train_df[attr].values.reshape(-1, 1))
+    val_df[attr] = cat_encoder.transform(val_df[attr].values.reshape(-1, 1))
+for attr in num_attrs:
+    scaler.fit(data[attr].values.reshape(-1, 1))
+    train_df[attr] = scaler.fit_transform(train_df[attr].values.reshape(-1, 1))
+    val_df[attr] = scaler.fit_transform(val_df[attr].values.reshape(-1, 1))
+            
+d = dict(zip(features, rnd_clf.feature_importances_)) # dict(feature: feature_importance)
+train_df = train_df.drop(list(filter(lambda x: d[x] < bias, d)), axis=1) # drop unimportance features
 
-# Define model
-@tf.function
-def get_compiled_model():
+train_df['label'] = train_df['label'].apply(lambda x: target_classes[attack_types_dict[x]]) # 10 classes > 4 main classes
+train_df['label'], _ = train_df['label'].factorize()
+        
+train_labels = train_df.pop('label')
+train_dataset = tf.data.Dataset.from_tensor_slices((train_df.values, train_labels))
+train_dataset = train_dataset.shuffle(buffer_size=len(train_df))
+train_dataset = train_dataset.batch(batch_size)
+
+val_df = val_df.drop(list(filter(lambda x: d[x] < bias, d)), axis=1) # drop unimportance features
+
+val_df['label'] = val_df['label'].apply(lambda x: target_classes[attack_types_dict[x]]) # 10 classes > 4 main classes
+val_df['label'], _ = val_df['label'].factorize()
+        
+val_labels = val_df.pop('label')
+val_dataset = tf.data.Dataset.from_tensor_slices((val_df.values, val_labels))
+val_dataset = val_dataset.shuffle(buffer_size=len(val_df))
+val_dataset = val_dataset.batch(batch_size)
+
+
+with strategy.scope():
+    # Compile and fit model
     model = tf.keras.Sequential([
         tf.keras.layers.Dense(21, activation='relu'),
         tf.keras.layers.Dropout(0.5),
@@ -190,18 +179,12 @@ def get_compiled_model():
     ])
 
     model.compile(optimizer='adam',
-                loss='sparse_categorical_crossentropy',
-                metrics=['accuracy'])
-    return model
-
-
-with strategy.scope():
-	# Compile and fit model
-	model = get_compiled_model()
-	epochs = 30
-	history = model.fit(train_dataset, 
-	                    validation_data=val_dataset, 
-	                    use_multiprocessing=True, 
-	                    epochs=epochs,
-	                    callbacks=[tensorboard_callback]
-	                   )
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy'])
+    epochs = 30
+    history = model.fit(train_dataset, 
+        validation_data=val_dataset, 
+        use_multiprocessing=True, 
+        epochs=epochs,
+        callbacks=[tensorboard_callback]
+    )
