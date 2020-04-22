@@ -186,5 +186,4 @@ with strategy.scope():
         validation_data=val_dataset, 
         use_multiprocessing=True, 
         epochs=epochs,
-        callbacks=[tensorboard_callback]
     )
