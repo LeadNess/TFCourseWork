@@ -5,6 +5,8 @@ kddcup_data
 logs
 .ipynb_chechpoints
 CourceWork.ipynb
+buf*
+distr*
 *-checkpoint.ipynb
 *.pyc
 

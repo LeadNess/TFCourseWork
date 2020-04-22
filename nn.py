@@ -12,6 +12,34 @@ from sklearn.preprocessing import LabelBinarizer, MinMaxScaler
 from sklearn.ensemble import RandomForestClassifier
 
 
+NUM_WORKERS = 2
+ip1 = input('Enter ip 1: ')
+ip2 = input('Enter ip 2: ')
+IP_ADDRS = [ip1, ip2]
+port1 = int(input('Enter port 1: '))
+port2 = int(input('Enter port 2: '))
+PORTS = [port1, port2]
+index = int(input('Enter worker index: '))
+
+os.environ['TF_CONFIG'] = json.dumps({
+    'cluster': {
+        'worker': ['%s:%d' % (IP_ADDRS[w], PORTS[w]) for w in range(NUM_WORKERS)],
+        'ps': ['%s:%d' % (IP_ADDRS[w], PORTS[w]) for w in range(NUM_WORKERS)]
+    },
+    'task': {
+        'type': 'worker',
+        'index': index
+    }
+})
+
+choose = input('Strategy:\n1. MultiWorkerMirroredStrategy\n2. ParameterServerStrategy')
+
+if choose == 1:
+	strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+else:
+	strategy = tf.distribute.experimental.ParameterServerStrategy()
+
+
 # Get features types dict and features list
 content = requests.get('http://kdd.ics.uci.edu/databases/kddcup99/kddcup.names').text
 buf, *features = content.split('\n')[:-1]
@@ -85,10 +113,11 @@ for cl in small_classes:
     val_df = val_df.merge(data[data['label']==cl][TRAIN_NUM+TEST_NUM:TRAIN_NUM+TEST_NUM+TEST_NUM], how='outer')
     
 print('train_df: ', len(train_df))
-print('test_df:  ', len(test_df))
+print('test_df:  ', len(test_df)) 
 print('val_df:   ', len(val_df))
 
 # Define a data pipeline for a RandomForestClassifier    
+@tf.function
 def pipeline(data):
     df = data.copy()
     cat_encoder = LabelBinarizer()
@@ -104,7 +133,8 @@ train_data = pipeline(train_df)
 rnd_clf = RandomForestClassifier(n_estimators=500, n_jobs=-1)
 rnd_clf.fit(train_data.drop('label', axis=1), train_data['label'])
 
-# Define data pipeline for NN model 
+# Define data pipeline for NN model
+@tf.function
 def df_to_dataset(input_df, main_df=data, bias = 0.05, shuffle=True, batch_size=32):
     """
     Performs data preprocessing.
@@ -149,6 +179,7 @@ logdir = "logs/scalars/" + datetime.now().strftime("%Y%m%d-%H%M%S")
 tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logdir)
 
 # Define model
+@tf.function
 def get_compiled_model():
     model = tf.keras.Sequential([
         tf.keras.layers.Dense(21, activation='relu'),
@@ -163,32 +194,6 @@ def get_compiled_model():
                 metrics=['accuracy'])
     return model
 
-NUM_WORKERS = 2
-ip1 = input('Enter ip 1: ')
-ip2 = input('Enter ip 2: ')
-IP_ADDRS = [ip1, ip2]
-port1 = int(input('Enter port 1: '))
-port2 = int(input('Enter port 2: '))
-PORTS = [port1, port2]
-index = int(input('Enter worker index: '))
-
-os.environ['TF_CONFIG'] = json.dumps({
-    'cluster': {
-        'worker': ['%s:%d' % (IP_ADDRS[w], PORTS[w]) for w in range(NUM_WORKERS)],
-        'ps': ['%s:%d' % (IP_ADDRS[w], PORTS[w]) for w in range(NUM_WORKERS)]
-    },
-    'task': {
-        'type': 'worker',
-        'index': index
-    }
-})
-
-choose = input('Strategy:\n1. MultiWorkerMirroredStrategy\n2. ParameterServerStrategy')
-
-if choose == 1:
-	strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
-else:
-	strategy = tf.distribute.experimental.ParameterServerStrategy()
 
 with strategy.scope():
 	# Compile and fit model
