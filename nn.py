@@ -27,7 +27,7 @@ os.environ['TF_CONFIG'] = json.dumps({
     }
 })
 
-choose = int(input('1. MultiWorkerMirroredStrategy\n2. ParameterServerStrategy\n))
+choose = int(input('1. MultiWorkerMirroredStrategy\n2. ParameterServerStrategy\n'))
 
 if choose == 1:
     strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
